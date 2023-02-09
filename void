@@ -1,0 +1,33 @@
+// Bitmask mapping (least siginificant bits): bits [1, 9] are errors reading a
+// sensor, with its sensor_ids value mapping to the bit number. Bit 10 is an
+// error when writing a file.
+// NOTE(ingar): bitmask will probably be scrapped from libtm and might be moved
+// to lib_read_ads_sensors-or_whatever
+
+static uint16_t _error_bitmask;
+
+int libtm_set_error_flag(uint8_t n_bit)
+{
+    uint16_t mask = 1;
+    if (n_bit > N_SENSORS + 1) // +1 for filewrite error
+    {
+        DEBUG(printf("Invalid sensor id; expected a value between 1 and %d inclusive, was actually %d\n",
+                     N_SENSORS + 1, n_bit);)
+        return -1;
+    }
+
+    _error_bitmask |= 1 << n_bit - 1;
+    return 0;
+}
+
+
+
+uint16_t libtm_get_error_bitmask()
+{
+    return _error_bitmask;
+}
+
+void libtm_reset_error_bitmask()
+{
+    _error_bitmask = 0;
+}
