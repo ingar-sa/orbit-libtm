@@ -20,8 +20,6 @@ int libtm_set_error_flag(uint8_t n_bit)
     return 0;
 }
 
-
-
 uint16_t libtm_get_error_bitmask()
 {
     return _error_bitmask;
@@ -30,4 +28,17 @@ uint16_t libtm_get_error_bitmask()
 void libtm_reset_error_bitmask()
 {
     _error_bitmask = 0;
+}
+
+// Should fail when i=11, succeed otherwise
+for (uint16_t i = 1; i < 12; ++i)
+{
+    libtm_set_error_flag(i);
+    _error_bitmask = 0;
+}
+
+// Should succeed, and _error_bitmask should remain the same every iteration
+for (uint16_t i = 0; i < 3; ++i)
+{
+    libtm_set_error_flag(5);
 }

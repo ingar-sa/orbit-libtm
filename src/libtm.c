@@ -111,21 +111,8 @@ void print_ADCS_data()
     }
 }
 
-int main()
+static void libtm_run_tests()
 {
-    // Should fail when i=11, succeed otherwise
-    // for (uint16_t i = 1; i < 12; ++i)
-    // {
-    //     libtm_set_error_flag(i);
-    //     _error_bitmask = 0;
-    // }
-
-    // Should succeed, and _error_bitmask should remain the same every iteration
-    // for (uint16_t i = 0; i < 3; ++i)
-    // {
-    //     libtm_set_error_flag(5);
-    // }
-
     struct iMTQ_housekeeping_data iMTQ_housekeeping_data;
     iMTQ_housekeeping_data.dig_volt = 1;
     iMTQ_housekeeping_data.analog_volt = 2;
@@ -151,6 +138,27 @@ int main()
     libtm_set_sensor_data(22, 23, 24, 8);
 
     print_ADCS_data();
+
+    printf("\n");
+
+    uint16_t new_imtq_data[11] = {12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22};
+    libtm_set_iMTQ_housekeeping_data((const void *)new_imtq_data);
+
+    libtm_set_sensor_data(22, 23, 24, 1);
+    libtm_set_sensor_data(25, 26, 27, 2);
+    libtm_set_sensor_data(28, 29, 30, 3);
+    libtm_set_sensor_data(31, 32, 33, 4);
+    libtm_set_sensor_data(34, 35, 36, 5);
+    libtm_set_sensor_data(37, 38, 39, 6);
+    libtm_set_sensor_data(40, 41, 42, 7);
+    libtm_set_sensor_data(43, 44, 45, 8);
+
+    print_ADCS_data();
+}
+
+int main()
+{
+    libtm_run_tests();
 
     return 0;
 }
