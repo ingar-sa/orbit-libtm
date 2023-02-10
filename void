@@ -42,3 +42,29 @@ for (uint16_t i = 0; i < 3; ++i)
 {
     libtm_set_error_flag(5);
 }
+
+
+/**
+ * @brief Checks if enough time has passed for given sensor_id to write it's data again.
+ * @param time_struct_current_time Current time
+ * @param sensor_id Sensor ID whose time of last writing should be compared to current time.
+ * @return 1 if time passed is larger than sensor's sampling period, 0 elsewise.
+ */
+int _has_sample_period_passed_since_last_append(int sensor_id)
+{
+
+    int current_time_ms = (time_struct_current_time.tv_sec) * 1000 + (time_struct_current_time.tv_usec) / 1000;
+
+    int sensor_last_time_append_ms = last_sample_time_ms[sensor_id - sensor_ID_offset];
+
+    if ((current_time_ms - sensor_last_time_append_ms) >= (int)sensor_list[sensor_id - sensor_ID_offset].sample_period_ms)
+    {
+        last_sample_time_ms[sensor_id - sensor_ID_offset] = current_time_ms;
+        return 1;
+    }
+    else
+    {
+
+        return 0;
+    }
+}
