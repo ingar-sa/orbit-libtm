@@ -2,6 +2,6 @@
 
 echo "==================STARTING BUILD=================="
 pushd build &> /dev/null
-gcc -Wextra -g -o libtm ../src/libtm.c
+gcc -Wextra -Wno-address-of-packed-member -g -o libtm ../src/libtm.c
 popd &> /dev/null
 echo "==================BUILD FINISHED=================="

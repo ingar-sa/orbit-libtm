@@ -1,9 +1,6 @@
 // #include <dirent.h>
 // #include <errno.h>
-// #include <fcntl.h>
-// #include <stdio.h>
 // #include <sys/stat.h>
-// #include <unistd.h>
 // // #include <macros.h> // Framsat .h
 // #include <errno.h>
 // #include <string.h>
@@ -11,10 +8,12 @@
 // #include <stdlib.h>
 // #include <sys/types.h>
 
+#include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/time.h>
+#include <unistd.h>
 
 #include "../inc/libtm.h"
 
@@ -25,10 +24,13 @@
 #define DEBUG(string) string
 #endif
 
+#define TM_MAX_FILESIZE_BYTES (211420)
+#define TM_FILEAMOUNT_ALLOWED 4000
+
 // TODO(ingar): give this struct a better name since it's used for multiple
 // things
 //  2 * 9 = 18  bytes
-struct __attribute__((__packed__)) sensor_write_intervals_ms
+struct __attribute__((__packed__)) sensor_time_data_ms
 {
     uint16_t IMU_Mean_Gyro_XYZ;
     uint16_t IMU_Mean_Magnetometer;
@@ -49,7 +51,7 @@ struct __attribute__((__packed__)) vec3
     float z;
 };
 
-// 11 * 2 = 22 bytes
+// 11 * 2 = 22 bytes 22 * 8
 struct __attribute__((__packed__)) iMTQ_housekeeping_data
 {
     uint16_t dig_volt;    /**< Measured voltage of digital supply  */
@@ -79,12 +81,28 @@ struct __attribute__((__packed__)) ADCS_sensor_data
     struct iMTQ_housekeeping_data iMTQ_housekeeping;
 };
 
-static struct ADCS_sensor_data _latest_polled_data;
-static struct sensor_write_intervals_ms _sensor_write_intervals_ms;
-static struct sensor_write_intervals_ms
-    _elapsed_time_since_last_sensor_write_ms;
+struct file_write_buffer
+{
+    uint8_t remaining_bytes; // NOTE(ingar): Should I just make this part of the
+                             // array?
+    uint8_t buffer[256];
+};
 
-void libtm_write_to_file()
+// WARNING(ingar): I do a lot of casting these structs to arrays of their types.
+// Therefore, one should be careful of alignment issues.
+
+static struct ADCS_sensor_data _latest_polled_data = {0};
+static struct sensor_time_data_ms _sensor_write_intervals_ms = {0};
+static struct sensor_time_data_ms _elapsed_time_since_last_sensor_write_ms = {
+    0};
+
+static struct file_write_buffer _file_write_buffer = {0};
+
+// Actual delta t, and the
+// header
+
+// NOTE(ingar): Rename this?
+void libtm_write_to_buffer()
 {
     struct timeval timeval_current_time;
     gettimeofday(&timeval_current_time, NULL);
@@ -95,7 +113,12 @@ void libtm_write_to_file()
     uint16_t *elapsed_time_since_last_sensor_write =
         (uint16_t *)&_elapsed_time_since_last_sensor_write_ms;
 
-    for (int i = 0; i < N_SENSORS; ++i)
+    // NOTE(ingar): Figure out where to open the file
+    //  char *next_telemetry_file = get_next_telemetry_file();
+    //  int fd = open(next_telemetry_file, O_WRONLY);
+
+    for (int i = 0; i < N_SENSORS;
+         ++i) // Change this to assigning the sensor id instead?
     {
         elapsed_time_since_last_sensor_write[i] +=
             timeval_current_time.tv_usec * 1000;
@@ -106,8 +129,68 @@ void libtm_write_to_file()
             continue;
         }
 
-        
+        sensors_to_write[n_sensors_to_write++] = i;
+        elapsed_time_since_last_sensor_write[i] = 0;
     }
+
+    // Fill the buffer, and write to file if there are remaining data to write,
+    // but the remaining buffer size cannot hold any of it
+    // NOTE(ingar): Ask Sigmund what the best way to check the remaining size of a
+    // buffer is RESEARCH(ingar): The best way is to have a variable with the
+    // remaining size, and decrement it
+
+    for (; n_sensors_to_write > 0; --n_sensors_to_write)
+    {
+
+        // NOTE(ingar): Gets the sensor id from the end of the array. I don't think
+        // the order that the sensors are written to the buffer matters
+        uint8_t sensor_id = sensors_to_write[n_sensors_to_write - 1];
+        if (sensor_id < IMTQ_HOUSEKEEPING)
+        {
+            if (_file_write_buffer.remaining_bytes < sizeof(struct vec3))
+            {
+                _write_buffer_to_file();
+                memset(_file_write_buffer.buffer, 0, 256);
+                _file_write_buffer.remaining_bytes = 256;
+            }
+
+            struct vec3 *latest_polled_data = (struct vec3 *)&_latest_polled_data;
+            const void *sensor_data = (const void *)&latest_polled_data[sensor_id];
+            // This offset is safe, since, even if remaing_bytes is 0 (which would
+            // cause an array out of bounds error in the following line), the if
+            // statement above would have been true, and the buffer would have been
+            // written to file and remaing_bytes set to 256
+            const void *buffer_head =
+                (const void *)&_file_write_buffer
+                    .buffer[256 - _file_write_buffer.remaining_bytes];
+
+            memcpy(buffer_head, sensor_data, sizeof(struct vec3));
+            _file_write_buffer.remaining_bytes -= sizeof(struct vec3);
+        }
+        else
+        {
+            if (_file_write_buffer.remaining_bytes <
+                sizeof(struct iMTQ_housekeeping_data))
+            {
+                _write_buffer_to_file();
+                memset(_file_write_buffer.buffer, 0, 256);
+                _file_write_buffer.remaining_bytes = 256;
+            }
+
+            const void *buffer_head =
+                (const void *)&_file_write_buffer
+                    .buffer[256 - _file_write_buffer.remaining_bytes];
+                    
+            const void *sensor_data =
+                (const void *)&_latest_polled_data.iMTQ_housekeeping;
+
+            memcpy(buffer_head, sensor_data, sizeof(struct iMTQ_housekeeping_data));
+            _file_write_buffer.remaining_bytes -=
+                sizeof(struct iMTQ_housekeeping_data);
+        }
+    }
+
+    // close(fd);
 }
 
 void libtm_set_sensor_write_interval(uint16_t interval_ms, uint8_t sensor_id)
@@ -155,7 +238,18 @@ static void print_ADCS_data();
 
 int main()
 {
-    // libtm_run_tests();
+    int i = 5;
+    for (int j = i; i > 0; --j)
+    {
+        if (j % 2 == 0)
+        {
+            --i;
+        }
+
+        printf("Looping\n");
+    }
+
+    libtm_run_tests();
 
     return 0;
 }

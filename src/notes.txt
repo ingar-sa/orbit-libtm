@@ -1,0 +1,36 @@
+The current implementation of libtm is that it works as an interface for programs to write ADCS data to Field.
+From what I remember about how we will structure the architecture, the library should have functions to take in
+the ADCS data, and will write data to files at a fixed frequency. libtm has a struct with values for the time
+interval between writing a sensor's data to file in ms. These numbers can be changed, and is essentially how
+we control the granularity of ADCS sensor data. 
+
+Control mechanism where the file writing never happens faster than the fastest sensor polling.
+
+Last Sigmund (10.02): 
+
+Write to buffer:
+    while there are remaining data to be written:
+        if size of sensor data < remaining free bytes in buffer
+            write to buffer
+        
+    if there are more data to be written:
+        write buffer to file
+        clear buffer
+        write data to buffer
+
+
+As far as I can tell, this implementation would need a time stamp associated with the sensor data
+
+
+You could also do the math to figure out how big a buffer needs to be to hold all the data generated
+by a sensor in the period between the one with the slowest polling rate and log one file then.
+Using the excel sheet, with the polling rates listed there, this would amount to 7702 bytes of data.
+This allows for 770h 30m  of continous file writing over 278,821 files. 
+
+I found a number of 1.2KiB per second download rate for the radio in libft/doc/specification.md
+The number of bits per file is 61616, which would take 38,5 seconds to download with this download
+rate.
+
+
+Gi filstørrelse i datafelt. Kunne be om spesifikke sekvenser av fragents og spesifikke fragments.
+Endre på konstanter. 1 minutt time out (konfigurerbart). Interrupte. 
