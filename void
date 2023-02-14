@@ -68,3 +68,24 @@ int _has_sample_period_passed_since_last_append(int sensor_id)
         return 0;
     }
 }
+
+int libtm_set_sensor_data(float x, float y, float z, uint8_t sensor_id, struct timeval timestamp)
+{
+    if (sensor_id < 1 || sensor_id >= IMTQ_HOUSEKEEPING)
+    {
+        DEBUG(printf("Invalid sensor id when setting sensor data; expected a value "
+                     "between 1 and %d "
+                     "inclusive, was actually %d\n",
+                     IMTQ_HOUSEKEEPING - 1, sensor_id);)
+        return -1;
+    }
+
+    struct vec3 *sensor_data = (struct vec3 *)&_latest_polled_data;
+    uint16_t *elapsed_time_since_last_sensor_write =
+        (uint16_t *)&_elapsed_time_since_last_sensor_write_ms;
+
+    sensor_data[sensor_id - 1].x = x;
+    sensor_data[sensor_id - 1].y = y;
+    sensor_data[sensor_id - 1].z = z;
+    sensor_data[sensor_id - 1].timestamp_last_write = timestamp;
+    elapsed_time_since_last_sensor_write[sensor_id - 1];

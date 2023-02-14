@@ -31,6 +31,8 @@ I found a number of 1.2KiB per second download rate for the radio in libft/doc/s
 The number of bits per file is 61616, which would take 38,5 seconds to download with this download
 rate.
 
-
 Gi filstørrelse i datafelt. Kunne be om spesifikke sekvenser av fragents og spesifikke fragments.
 Endre på konstanter. 1 minutt time out (konfigurerbart). Interrupte. 
+
+
+RESEARCH(ingar): The best way is to have a variable with the remaining size, and decrement it 

@@ -18,10 +18,13 @@
 #include "../inc/libtm.h"
 
 #define DO_DEBUG 0
+#define TESTING 0
 
 #define ArrayLength(Array) (sizeof(Array) / sizeof(Array[0]))
-#ifdef DO_DEBUG
+#if DO_DEBUG
 #define DEBUG(string) string
+#else
+#define DEBUG(string)
 #endif
 
 #define TM_MAX_FILESIZE_BYTES (211420)
@@ -29,23 +32,25 @@
 
 // TODO(ingar): give this struct a better name since it's used for multiple
 // things
-//  2 * 9 = 18  bytes
+//  8 * 9 = 72 bytes
 struct __attribute__((__packed__)) sensor_time_data_ms
 {
-    uint16_t IMU_Mean_Gyro_XYZ;
-    uint16_t IMU_Mean_Magnetometer;
-    uint16_t Controller_output_raw;
-    uint16_t Controller_output_to_imtq;
-    uint16_t envModels_Mag_field;
-    uint16_t envModels_Sun_position;
-    uint16_t envModels_radius_ECI;
-    uint16_t envModels_quarternion_ECI;
-    uint16_t iMTQ_housekeeping;
+    struct timeval IMU_Mean_Gyro_XYZ;
+    struct timeval IMU_Mean_Magnetometer;
+    struct timeval Controller_output_raw;
+    struct timeval Controller_output_to_imtq;
+    struct timeval envModels_Mag_field;
+    struct timeval envModels_Sun_position;
+    struct timeval envModels_radius_ECI;
+    struct timeval envModels_quarternion_ECI;
+    struct timeval iMTQ_housekeeping;
 };
 
 // 3 * 4 = 12 bytes
 struct __attribute__((__packed__)) vec3
 {
+    enum sensor_ids sensor_id;
+    struct timeval timestamp_last_write;
     float x;
     float y;
     float z;
@@ -54,6 +59,10 @@ struct __attribute__((__packed__)) vec3
 // 11 * 2 = 22 bytes 22 * 8
 struct __attribute__((__packed__)) iMTQ_housekeeping_data
 {
+    // We will always know this id, but we whould probably have the
+    // id in the struct anyway for consistency
+    enum sensor_ids sensor_id;
+    struct timeval timestamp_last_write;
     uint16_t dig_volt;    /**< Measured voltage of digital supply  */
     uint16_t analog_volt; /**< Measured voltage of analogue supply  */
     uint16_t dig_curr;    /**< Measured current of digital supply  */
@@ -83,8 +92,7 @@ struct __attribute__((__packed__)) ADCS_sensor_data
 
 struct file_write_buffer
 {
-    uint8_t remaining_bytes; // NOTE(ingar): Should I just make this part of the
-                             // array?
+    uint8_t remaining_bytes;
     uint8_t buffer[256];
 };
 
@@ -93,8 +101,7 @@ struct file_write_buffer
 
 static struct ADCS_sensor_data _latest_polled_data = {0};
 static struct sensor_time_data_ms _sensor_write_intervals_ms = {0};
-static struct sensor_time_data_ms _elapsed_time_since_last_sensor_write_ms = {
-    0};
+static struct sensor_time_data_ms _elapsed_time_since_last_sensor_write_ms = {0};
 
 static struct file_write_buffer _file_write_buffer = {0};
 
@@ -102,6 +109,10 @@ static struct file_write_buffer _file_write_buffer = {0};
 // header
 
 // NOTE(ingar): Rename this?
+// NOTE(ingar): Figure out where to open the file
+//  char *next_telemetry_file = get_next_telemetry_file();
+//  int fd = open(next_telemetry_file, O_WRONLY);
+#if 0
 void libtm_write_to_buffer()
 {
     struct timeval timeval_current_time;
@@ -113,15 +124,11 @@ void libtm_write_to_buffer()
     uint16_t *elapsed_time_since_last_sensor_write =
         (uint16_t *)&_elapsed_time_since_last_sensor_write_ms;
 
-    // NOTE(ingar): Figure out where to open the file
-    //  char *next_telemetry_file = get_next_telemetry_file();
-    //  int fd = open(next_telemetry_file, O_WRONLY);
-
     for (int i = 0; i < N_SENSORS;
          ++i) // Change this to assigning the sensor id instead?
     {
-        elapsed_time_since_last_sensor_write[i] +=
-            timeval_current_time.tv_usec * 1000;
+        // elapsed_time_since_last_sensor_write[i] +=
+        //     timeval_current_time.tv_usec * 1000;
 
         if ((sensor_write_intervals[i] == 0) ||
             (elapsed_time_since_last_sensor_write[i] < sensor_write_intervals[i]))
@@ -136,8 +143,6 @@ void libtm_write_to_buffer()
     // Fill the buffer, and write to file if there are remaining data to write,
     // but the remaining buffer size cannot hold any of it
     // NOTE(ingar): Ask Sigmund what the best way to check the remaining size of a
-    // buffer is RESEARCH(ingar): The best way is to have a variable with the
-    // remaining size, and decrement it
 
     for (; n_sensors_to_write > 0; --n_sensors_to_write)
     {
@@ -145,7 +150,7 @@ void libtm_write_to_buffer()
         // NOTE(ingar): Gets the sensor id from the end of the array. I don't think
         // the order that the sensors are written to the buffer matters
         uint8_t sensor_id = sensors_to_write[n_sensors_to_write - 1];
-        if (sensor_id < IMTQ_HOUSEKEEPING)
+        if (sensor_id < IMTQ_HOUSEKEEPING - 1)
         {
             if (_file_write_buffer.remaining_bytes < sizeof(struct vec3))
             {
@@ -180,7 +185,7 @@ void libtm_write_to_buffer()
             const void *buffer_head =
                 (const void *)&_file_write_buffer
                     .buffer[256 - _file_write_buffer.remaining_bytes];
-                    
+
             const void *sensor_data =
                 (const void *)&_latest_polled_data.iMTQ_housekeeping;
 
@@ -192,8 +197,12 @@ void libtm_write_to_buffer()
 
     // close(fd);
 }
+#endif
 
-void libtm_set_sensor_write_interval(uint16_t interval_ms, uint8_t sensor_id)
+// NOTE(ingar): Unforntunately no compile time type checking for enums :/
+// You can just put any number in there, and it will compile
+void libtm_set_sensor_write_interval(struct timeval time_interval,
+                                     enum sensor_ids sensor_id)
 {
     if (sensor_id < 1 || sensor_id > N_SENSORS)
     {
@@ -204,26 +213,25 @@ void libtm_set_sensor_write_interval(uint16_t interval_ms, uint8_t sensor_id)
         return;
     }
 
-    uint16_t *sensor_write_intervals = (uint16_t *)&_sensor_write_intervals_ms;
-    sensor_write_intervals[sensor_id - 1] = interval_ms;
+    struct timeval *sensor_write_intervals =
+        (struct timeval *)&_sensor_write_intervals_ms;
+    sensor_write_intervals[sensor_id - 1] = time_interval;
 }
 
-int libtm_set_sensor_data(float x, float y, float z, uint8_t sensor_id)
+void libtm_set_sensor_data(const void *sensor_data, enum sensor_ids sensor_id)
 {
-    if (sensor_id < 1 || sensor_id >= IMTQ_HOUSEKEEPING)
+    if (sensor_id < 1 || sensor_id > N_SENSORS)
     {
         DEBUG(printf("Invalid sensor id when setting sensor data; expected a value "
                      "between 1 and %d "
                      "inclusive, was actually %d\n",
-                     IMTQ_HOUSEKEEPING - 1, sensor_id);)
-        return -1;
+                     N_SENSORS, sensor_id);)
+        return;
     }
 
-    struct vec3 *sensor_data = (struct vec3 *)&_latest_polled_data;
-
-    sensor_data[sensor_id - 1].x = x;
-    sensor_data[sensor_id - 1].y = y;
-    sensor_data[sensor_id - 1].z = z;
+    struct vec3 *latest_polled_data = (struct vec3 *)&_latest_polled_data;
+    memcpy((void *)&latest_polled_data[sensor_id - 1], sensor_data,
+           sizeof(struct vec3));
 }
 
 // NOTE(ingar): Should the byte be sent in separately from the buffer.
@@ -233,27 +241,17 @@ void libtm_set_iMTQ_housekeeping_data(const void *iMTQ_housekeeping_data)
            sizeof(struct iMTQ_housekeeping_data));
 }
 
+#if TESTING
 static void libtm_run_tests();
 static void print_ADCS_data();
+#endif
 
 int main()
 {
-    int i = 5;
-    for (int j = i; i > 0; --j)
-    {
-        if (j % 2 == 0)
-        {
-            --i;
-        }
-
-        printf("Looping\n");
-    }
-
-    libtm_run_tests();
-
     return 0;
 }
 
+#if TESTING
 static void libtm_run_tests()
 {
     struct iMTQ_housekeeping_data iMTQ_housekeeping_data;
@@ -339,3 +337,4 @@ static void print_ADCS_data()
         }
     }
 }
+#endif
