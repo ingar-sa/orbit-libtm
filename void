@@ -89,3 +89,32 @@ int libtm_set_sensor_data(float x, float y, float z, uint8_t sensor_id, struct t
     sensor_data[sensor_id - 1].z = z;
     sensor_data[sensor_id - 1].timestamp_last_write = timestamp;
     elapsed_time_since_last_sensor_write[sensor_id - 1];
+
+// uint8_t sensors_to_write[N_SENSORS] = {0};
+// uint8_t n_sensors_to_write = 0;
+// struct timeval *elapsed_time_since_last_sensor_write =
+//     (struct timeval *)&_elapsed_time_since_last_sensor_write_ms;
+
+// for (int i = 0; i < N_SENSORS;
+//      ++i) // Change this to assigning the sensor id instead?
+// {
+//     // elapsed_time_since_last_sensor_write[i] +=
+//     //     timeval_current_time.tv_usec * 1000;
+//     // (sensor_write_intervals[i].tv_sec == 0 && sensor_write_intervals[i].tv_usec == 0) ||
+//     if ((elapsed_time_since_last_sensor_write[i].< sensor_write_intervals[i]))
+//     {
+//         continue;
+//     }
+
+//     sensors_to_write[n_sensors_to_write++] = i;
+//     elapsed_time_since_last_sensor_write[i] = 0;
+// }
+
+// Fill the buffer, and write to file if there are remaining data to write,
+// but the remaining buffer size cannot hold any of it
+// NOTE(ingar): Ask Sigmund what the best way to check the remaining size of a
+
+// struct timeval timeval_current_time;
+// gettimeofday(&timeval_current_time, NULL);
+
+static struct sensor_time_data_ms _elapsed_time_since_last_sensor_write_ms = {0};

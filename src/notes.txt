@@ -36,3 +36,5 @@ Endre på konstanter. 1 minutt time out (konfigurerbart). Interrupte.
 
 
 RESEARCH(ingar): The best way is to have a variable with the remaining size, and decrement it 
+// NOTE(ingar): Unforntunately no compile time type checking for enums :/
+// You can just put any number in there, and it will compile

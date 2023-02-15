@@ -18,7 +18,7 @@
 #include "../inc/libtm.h"
 
 #define DO_DEBUG 0
-#define TESTING 0
+#define TESTING 1
 
 #define ArrayLength(Array) (sizeof(Array) / sizeof(Array[0]))
 #if DO_DEBUG
@@ -27,7 +27,7 @@
 #define DEBUG(string)
 #endif
 
-#define TM_MAX_FILESIZE_BYTES (211420)
+#define TM_MAX_FILESIZE_BYTES (211 420)
 #define TM_FILEAMOUNT_ALLOWED 4000
 
 // TODO(ingar): give this struct a better name since it's used for multiple
@@ -46,163 +46,119 @@ struct __attribute__((__packed__)) sensor_time_data_ms
     struct timeval iMTQ_housekeeping;
 };
 
-// 3 * 4 = 12 bytes
-struct __attribute__((__packed__)) vec3
-{
-    enum sensor_ids sensor_id;
-    struct timeval timestamp_last_write;
-    float x;
-    float y;
-    float z;
-};
-
-// 11 * 2 = 22 bytes 22 * 8
-struct __attribute__((__packed__)) iMTQ_housekeeping_data
-{
-    // We will always know this id, but we whould probably have the
-    // id in the struct anyway for consistency
-    enum sensor_ids sensor_id;
-    struct timeval timestamp_last_write;
-    uint16_t dig_volt;    /**< Measured voltage of digital supply  */
-    uint16_t analog_volt; /**< Measured voltage of analogue supply  */
-    uint16_t dig_curr;    /**< Measured current of digital supply  */
-    uint16_t analog_curr; /**< Measured current of analogue supply  */
-    int16_t meas_curr_x;  /**< Measured current through X-axis coil  */
-    int16_t meas_curr_y;  /**< Measured current through Y-axis coil  */
-    int16_t meas_curr_z;  /**< Measured current through Z-axis coil  */
-    int16_t coil_temp_x;  /**< Measured temperature in X-axis coil  */
-    int16_t coil_temp_y;  /**< Measured temperature in Y-axis coil  */
-    int16_t coil_temp_z;  /**< Measured temperature in Z-axis coil  */
-    int16_t MCU_temp;     /**< Temperature measurement of the MCU  */
-};
-
-// 12 * 8 + 22 = 118 bytes
+//  8 * 21 + 22 = 186 bytes
 struct __attribute__((__packed__)) ADCS_sensor_data
 {
-    struct vec3 IMU_Mean_Gyro_XYZ;
-    struct vec3 IMU_Mean_Magnetometer;
-    struct vec3 Controller_output_raw;
-    struct vec3 Controller_output_to_imtq;
-    struct vec3 envModels_Mag_field;
-    struct vec3 envModels_Sun_position;
-    struct vec3 envModels_radius_ECI;
-    struct vec3 envModels_quarternion_ECI;
-    struct iMTQ_housekeeping_data iMTQ_housekeeping;
+    struct libtm_vec3_packet IMU_Mean_Gyro_XYZ;
+    struct libtm_vec3_packet IMU_Mean_Magnetometer;
+    struct libtm_vec3_packet Controller_output_raw;
+    struct libtm_vec3_packet Controller_output_to_imtq;
+    struct libtm_vec3_packet envModels_Mag_field;
+    struct libtm_vec3_packet envModels_Sun_position;
+    struct libtm_vec3_packet envModels_radius_ECI;
+    struct libtm_vec3_packet envModels_quarternion_ECI;
+    struct libtm_iMTQ_housekeeping_packet iMTQ_housekeeping;
 };
 
 struct file_write_buffer
 {
-    uint8_t remaining_bytes;
+    uint8_t remaining_bytes; // [0, 255]
     uint8_t buffer[256];
 };
 
 // WARNING(ingar): I do a lot of casting these structs to arrays of their types.
-// Therefore, one should be careful of alignment issues.
-
+// Therefore, I should be careful of alignment issues.
 static struct ADCS_sensor_data _latest_polled_data = {0};
 static struct sensor_time_data_ms _sensor_write_intervals_ms = {0};
-static struct sensor_time_data_ms _elapsed_time_since_last_sensor_write_ms = {0};
-
 static struct file_write_buffer _file_write_buffer = {0};
 
-// Actual delta t, and the
-// header
-
-// NOTE(ingar): Rename this?
-// NOTE(ingar): Figure out where to open the file
-//  char *next_telemetry_file = get_next_telemetry_file();
-//  int fd = open(next_telemetry_file, O_WRONLY);
-#if 0
-void libtm_write_to_buffer()
+#if 1
+// NOTE(ingar): Rename this? Make this public?
+// Still not sure where the "tick" is going to happen
+void _libtm_write()
 {
-    struct timeval timeval_current_time;
-    gettimeofday(&timeval_current_time, NULL);
+    struct timeval *sensor_write_intervals =
+        (struct timeval *)&_sensor_write_intervals_ms;
 
-    uint8_t sensors_to_write[N_SENSORS] = {0};
-    uint8_t n_sensors_to_write = 0;
-    uint16_t *sensor_write_intervals = (uint16_t *)&_sensor_write_intervals_ms;
-    uint16_t *elapsed_time_since_last_sensor_write =
-        (uint16_t *)&_elapsed_time_since_last_sensor_write_ms;
-
-    for (int i = 0; i < N_SENSORS;
-         ++i) // Change this to assigning the sensor id instead?
+    for (int sensor_id = 0; sensor_id < IMTQ_HOUSEKEEPING - 1; ++sensor_id)
     {
-        // elapsed_time_since_last_sensor_write[i] +=
-        //     timeval_current_time.tv_usec * 1000;
-
-        if ((sensor_write_intervals[i] == 0) ||
-            (elapsed_time_since_last_sensor_write[i] < sensor_write_intervals[i]))
-        {
-            continue;
-        }
-
-        sensors_to_write[n_sensors_to_write++] = i;
-        elapsed_time_since_last_sensor_write[i] = 0;
-    }
-
-    // Fill the buffer, and write to file if there are remaining data to write,
-    // but the remaining buffer size cannot hold any of it
-    // NOTE(ingar): Ask Sigmund what the best way to check the remaining size of a
-
-    for (; n_sensors_to_write > 0; --n_sensors_to_write)
-    {
-
-        // NOTE(ingar): Gets the sensor id from the end of the array. I don't think
-        // the order that the sensors are written to the buffer matters
-        uint8_t sensor_id = sensors_to_write[n_sensors_to_write - 1];
         if (sensor_id < IMTQ_HOUSEKEEPING - 1)
         {
-            if (_file_write_buffer.remaining_bytes < sizeof(struct vec3))
+            if (_file_write_buffer.remaining_bytes < sizeof(struct libtm_vec3_packet))
             {
-                _write_buffer_to_file();
+                // _write_buffer_to_file();
                 memset(_file_write_buffer.buffer, 0, 256);
-                _file_write_buffer.remaining_bytes = 256;
+                _file_write_buffer.remaining_bytes = 255;
             }
 
-            struct vec3 *latest_polled_data = (struct vec3 *)&_latest_polled_data;
-            const void *sensor_data = (const void *)&latest_polled_data[sensor_id];
-            // This offset is safe, since, even if remaing_bytes is 0 (which would
-            // cause an array out of bounds error in the following line), the if
-            // statement above would have been true, and the buffer would have been
-            // written to file and remaing_bytes set to 256
-            const void *buffer_head =
-                (const void *)&_file_write_buffer
-                    .buffer[256 - _file_write_buffer.remaining_bytes];
+            struct libtm_vec3_packet *latest_polled_data =
+                (struct libtm_vec3_packet *)&_latest_polled_data;
+            struct libtm_vec3_packet sensor_packet = latest_polled_data[sensor_id];
+            struct timeval sensor_write_interval = sensor_write_intervals[sensor_id];
 
-            memcpy(buffer_head, sensor_data, sizeof(struct vec3));
-            _file_write_buffer.remaining_bytes -= sizeof(struct vec3);
+            // Seconds have to be <=, because the interval might just be in ms, in
+            // which case the seconds will be 0
+            if (sensor_packet.timestamp_last_write.tv_sec <=
+                    sensor_write_interval.tv_sec &&
+                sensor_packet.timestamp_last_write.tv_usec <
+                    sensor_write_interval.tv_usec)
+            {
+                continue; // Not enough time has passed to write this sensor again
+            }
+
+            const void *sensor_packet_p = (const void *)&sensor_packet;
+            void *buffer_head = (void *)&_file_write_buffer
+                                    .buffer[256 - _file_write_buffer.remaining_bytes];
+            memcpy(buffer_head, sensor_packet_p, sizeof(struct libtm_vec3_packet));
+            _file_write_buffer.remaining_bytes -= sizeof(struct libtm_vec3_packet);
         }
         else
         {
+            // TODO(ingar): Is the < correct?
             if (_file_write_buffer.remaining_bytes <
-                sizeof(struct iMTQ_housekeeping_data))
+                sizeof(struct libtm_iMTQ_housekeeping_packet))
             {
-                _write_buffer_to_file();
+                // _write_buffer_to_file();
                 memset(_file_write_buffer.buffer, 0, 256);
-                _file_write_buffer.remaining_bytes = 256;
+                _file_write_buffer.remaining_bytes = 255;
             }
 
-            const void *buffer_head =
-                (const void *)&_file_write_buffer
-                    .buffer[256 - _file_write_buffer.remaining_bytes];
+            struct libtm_iMTQ_housekeeping_packet sensor_packet =
+                _latest_polled_data.iMTQ_housekeeping;
+            struct timeval sensor_write_interval =
+                _sensor_write_intervals_ms.iMTQ_housekeeping;
 
-            const void *sensor_data =
-                (const void *)&_latest_polled_data.iMTQ_housekeeping;
+            if (sensor_packet.timestamp_last_write.tv_sec <=
+                    sensor_write_interval.tv_sec &&
+                sensor_packet.timestamp_last_write.tv_usec <
+                    sensor_write_interval.tv_usec)
+            {
+                continue; // Not enough time has passed to write this sensor again
+            }
 
-            memcpy(buffer_head, sensor_data, sizeof(struct iMTQ_housekeeping_data));
+            const void *sensor_packet_p = (const void *)&sensor_packet;
+            void *buffer_head = (void *)&_file_write_buffer
+                                    .buffer[256 - _file_write_buffer.remaining_bytes];
+
+            memcpy(buffer_head, sensor_packet_p,
+                   sizeof(struct libtm_iMTQ_housekeeping_packet));
             _file_write_buffer.remaining_bytes -=
-                sizeof(struct iMTQ_housekeeping_data);
+                sizeof(struct libtm_iMTQ_housekeeping_packet);
         }
-    }
 
-    // close(fd);
+        // Could make it an elif and return an error if it is greater than
+        // IMTQ_HOUSEKEEPING
+    }
 }
 #endif
 
-// NOTE(ingar): Unforntunately no compile time type checking for enums :/
-// You can just put any number in there, and it will compile
+void _write_buffer_to_file()
+{
+
+}
+
 void libtm_set_sensor_write_interval(struct timeval time_interval,
-                                     enum sensor_ids sensor_id)
+                                     uint8_t sensor_id)
 {
     if (sensor_id < 1 || sensor_id > N_SENSORS)
     {
@@ -218,7 +174,7 @@ void libtm_set_sensor_write_interval(struct timeval time_interval,
     sensor_write_intervals[sensor_id - 1] = time_interval;
 }
 
-void libtm_set_sensor_data(const void *sensor_data, enum sensor_ids sensor_id)
+void libtm_set_sensor_data(const void *sensor_data, uint8_t sensor_id)
 {
     if (sensor_id < 1 || sensor_id > N_SENSORS)
     {
@@ -229,16 +185,16 @@ void libtm_set_sensor_data(const void *sensor_data, enum sensor_ids sensor_id)
         return;
     }
 
-    struct vec3 *latest_polled_data = (struct vec3 *)&_latest_polled_data;
+    struct libtm_vec3_packet *latest_polled_data =
+        (struct libtm_vec3_packet *)&_latest_polled_data;
     memcpy((void *)&latest_polled_data[sensor_id - 1], sensor_data,
-           sizeof(struct vec3));
+           sizeof(struct libtm_vec3_packet));
 }
 
-// NOTE(ingar): Should the byte be sent in separately from the buffer.
-void libtm_set_iMTQ_housekeeping_data(const void *iMTQ_housekeeping_data)
+void libtm_set_iMTQ_housekeeping_data(const void *iMTQ_housekeeping_packet)
 {
-    memcpy((void *)&_latest_polled_data.iMTQ_housekeeping, iMTQ_housekeeping_data,
-           sizeof(struct iMTQ_housekeeping_data));
+    memcpy((void *)&_latest_polled_data.iMTQ_housekeeping, iMTQ_housekeeping_packet,
+           sizeof(struct libtm_iMTQ_housekeeping_packet));
 }
 
 #if TESTING
@@ -248,13 +204,19 @@ static void print_ADCS_data();
 
 int main()
 {
+#if TESTING
+    libtm_run_tests();
+    print_ADCS_data();
+#endif
+
     return 0;
 }
 
 #if TESTING
 static void libtm_run_tests()
 {
-    struct iMTQ_housekeeping_data iMTQ_housekeeping_data;
+    struct timeval imtq_time_interval = {10, 0};
+    struct libtm_iMTQ_housekeeping_data iMTQ_housekeeping_data;
     iMTQ_housekeeping_data.dig_volt = 1;
     iMTQ_housekeeping_data.analog_volt = 2;
     iMTQ_housekeeping_data.dig_curr = 3;
@@ -267,74 +229,88 @@ static void libtm_run_tests()
     iMTQ_housekeeping_data.coil_temp_z = 10;
     iMTQ_housekeeping_data.MCU_temp = 11;
 
-    libtm_set_iMTQ_housekeeping_data((const void *)&iMTQ_housekeeping_data);
+    struct libtm_iMTQ_housekeeping_packet iMTQ_housekeeping_packet = {
+        .sensor_id = IMTQ_HOUSEKEEPING,
+        .timestamp_last_write = imtq_time_interval,
+        .data = iMTQ_housekeeping_data};
 
-    libtm_set_sensor_data(1, 2, 3, 0);
-    libtm_set_sensor_data(1, 2, 3, 1);
-    libtm_set_sensor_data(4, 5, 6, 2);
-    libtm_set_sensor_data(7, 8, 9, 3);
-    libtm_set_sensor_data(10, 11, 12, 4);
-    libtm_set_sensor_data(13, 14, 15, 5);
-    libtm_set_sensor_data(16, 17, 18, 6);
-    libtm_set_sensor_data(19, 20, 21, 7);
-    libtm_set_sensor_data(22, 23, 24, 8);
-    libtm_set_sensor_data(1, 2, 3, 9);
-    // print_ADCS_data();
+    libtm_set_iMTQ_housekeeping_data((const void *)&iMTQ_housekeeping_packet);
 
-    DEBUG(printf("\n");)
+    struct libtm_vec3_packet sensor_data = {.sensor_id = 1,
+                                      .timestamp_last_write = imtq_time_interval,
+                                      .data = {1, 2, 3}};
 
-    uint16_t new_imtq_data[11] = {12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22};
-    libtm_set_iMTQ_housekeeping_data((const void *)new_imtq_data);
+    struct libtm_vec3_packet sensor_data2 = {.sensor_id = 2,
+                                       .timestamp_last_write = imtq_time_interval,
+                                       .data = {4, 5, 6}};
 
-    libtm_set_sensor_data(22, 23, 24, 1);
-    libtm_set_sensor_data(25, 26, 27, 2);
-    libtm_set_sensor_data(28, 29, 30, 3);
-    libtm_set_sensor_data(31, 32, 33, 4);
-    libtm_set_sensor_data(34, 35, 36, 5);
-    libtm_set_sensor_data(37, 38, 39, 6);
-    libtm_set_sensor_data(40, 41, 42, 7);
-    libtm_set_sensor_data(43, 44, 45, 8);
+    struct libtm_vec3_packet sensor_data3 = {.sensor_id = 3,
+                                       .timestamp_last_write = imtq_time_interval,
+                                       .data = {7, 8, 9}};
 
-    // print_ADCS_data();
+    struct libtm_vec3_packet sensor_data4 = {.sensor_id = 4,
+                                       .timestamp_last_write = imtq_time_interval,
+                                       .data = {10, 11, 12}};
 
-    libtm_set_sensor_write_interval(50, 0);
-    libtm_set_sensor_write_interval(50, 10);
-    for (int i = 1; i <= N_SENSORS; ++i)
-    {
+    struct libtm_vec3_packet sensor_data5 = {.sensor_id = 5,
+                                       .timestamp_last_write = imtq_time_interval,
+                                       .data = {13, 14, 15}};
 
-        libtm_set_sensor_write_interval(50 * i, i);
-    }
+    struct libtm_vec3_packet sensor_data6 = {.sensor_id = 6,
+                                       .timestamp_last_write = imtq_time_interval,
+                                       .data = {16, 17, 18}};
 
-    uint16_t *sensor_write_intervals = (uint16_t *)&_sensor_write_intervals_ms;
-    for (int i = 0; i < N_SENSORS; ++i)
-    {
-        DEBUG(printf("Sensor %d write interval: %d\n", i + 1,
-                     sensor_write_intervals[i]);)
-    }
+    struct libtm_vec3_packet sensor_data7 = {.sensor_id = 7,
+                                       .timestamp_last_write = imtq_time_interval,
+                                       .data = {19, 20, 21}};
+
+    struct libtm_vec3_packet sensor_data8 = {.sensor_id = 8,
+                                       .timestamp_last_write = imtq_time_interval,
+                                       .data = {22, 23, 24}};
+
+    libtm_set_sensor_data((const void *)&sensor_data, 1);
+    libtm_set_sensor_data((const void *)&sensor_data2, 2);
+    libtm_set_sensor_data((const void *)&sensor_data3, 3);
+    libtm_set_sensor_data((const void *)&sensor_data4, 4);
+    libtm_set_sensor_data((const void *)&sensor_data5, 5);
+    libtm_set_sensor_data((const void *)&sensor_data6, 6);
+    libtm_set_sensor_data((const void *)&sensor_data7, 7);
+    libtm_set_sensor_data((const void *)&sensor_data8, 8);
 }
 
 static void print_ADCS_data()
 {
-    struct vec3 *sensor_data = (struct vec3 *)&_latest_polled_data;
+    struct libtm_vec3_packet *sensor_packets =
+        (struct libtm_vec3_packet *)&_latest_polled_data;
     for (int i = 0; i < IMTQ_HOUSEKEEPING - 1; ++i)
     {
-        DEBUG(printf("Sensor %d values: X=%f Y=%f Z=%f\n", i + 1, sensor_data[i].x,
-                     sensor_data[i].y, sensor_data[i].z);)
+        struct libtm_vec3_packet sensor_packet = sensor_packets[i];
+        printf("Sensor %d values: tv_sec: %ld, tv_usec: %ld, X: %f, Y: %f, Z: %f\n",
+               sensor_packet.sensor_id, sensor_packet.timestamp_last_write.tv_sec,
+               sensor_packet.timestamp_last_write.tv_usec, sensor_packet.data.x,
+               sensor_packet.data.y, sensor_packet.data.z);
     }
 
-    DEBUG(printf("\n");)
+    printf("\n");
 
-    uint16_t *imtq_data = (uint16_t *)&_latest_polled_data.iMTQ_housekeeping;
-    for (int i = 0; i < 11; ++i)
-    {
-        if (i < 4)
-        {
-            DEBUG(printf("Field %d values: %d\n", i + 1, imtq_data[i]);)
-        }
-        else
-        {
-            DEBUG(printf("Field %d values: %d\n", i + 1, (int16_t)imtq_data[i]);)
-        }
-    }
+    struct libtm_iMTQ_housekeeping_packet iMTQ_housekeeping_packet =
+        _latest_polled_data.iMTQ_housekeeping;
+    printf("iMTQ Housekeeping values:\n tv_sec: %ld, tv_usec: %ld, dig_volt: %d,\n "
+           "analog_volt: %d, dig_curr: %d, analog_curr: %d, meas_curr_x: %d,\n "
+           "meas_curr_y: %d, meas_curr_z: %d, coil_temp_x: %d, coil_temp_y: %d,\n "
+           "coil_temp_z: %d, MCU_temp: %d\n",
+           iMTQ_housekeeping_packet.timestamp_last_write.tv_sec,
+           iMTQ_housekeeping_packet.timestamp_last_write.tv_usec,
+           iMTQ_housekeeping_packet.data.dig_volt,
+           iMTQ_housekeeping_packet.data.analog_volt,
+           iMTQ_housekeeping_packet.data.dig_curr,
+           iMTQ_housekeeping_packet.data.analog_curr,
+           iMTQ_housekeeping_packet.data.meas_curr_x,
+           iMTQ_housekeeping_packet.data.meas_curr_y,
+           iMTQ_housekeeping_packet.data.meas_curr_z,
+           iMTQ_housekeeping_packet.data.coil_temp_x,
+           iMTQ_housekeeping_packet.data.coil_temp_y,
+           iMTQ_housekeeping_packet.data.coil_temp_z,
+           iMTQ_housekeeping_packet.data.MCU_temp);
 }
 #endif
