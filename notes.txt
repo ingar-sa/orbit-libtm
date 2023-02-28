@@ -38,3 +38,8 @@ Endre på konstanter. 1 minutt time out (konfigurerbart). Interrupte.
 RESEARCH(ingar): The best way is to have a variable with the remaining size, and decrement it 
 // NOTE(ingar): Unforntunately no compile time type checking for enums :/
 // You can just put any number in there, and it will compile
+
+//       21b = vec3                   21b = vec3
+//   9       11       1           9       11       1
+// header - data - padding ---- header - data - padding
+// data layout

@@ -15,15 +15,11 @@ enum libtm_sensor_ids
     N_SENSORS = 9
 };
 
-// 1 + 8 = 9 bytes
 struct __attribute__((packed)) libtm_packet_header {
     uint8_t sensor_id;
     uint64_t timestamp_us;
 };
 
-//       21b = vec3                   21b = vec3
-//   9       11       1           9       11       1
-// header - data - padding ---- header - data - padding
 struct libtm_packet {
     struct libtm_packet_header header;
     void *data;
@@ -32,7 +28,7 @@ struct libtm_packet {
 
 /**
  *  @brief Writes a sensor packet to a buffer in libtm.
- *  The buffer is written to file if the buffer is full.
+ *  The buffer is written to file if it is full.
  * 
  *  @param sensor_packet The sensor packet to write to the buffer.
 */
@@ -44,7 +40,8 @@ void libtm_write_sensor_data(struct libtm_packet sensor_packet);
  * 
  *  @param file_ring_buffer A pointer to the file ring buffer.
  *  @param active_file_index A pointer to the active file index.
+ *  @param sensor_write_intervals_us A pointer to the sensor write intervals.
 */
-void libtm_init(uint64_t *file_ring_buffer, uint8_t *active_file_index);
+void libtm_init(uint64_t *file_ring_buffer, uint8_t *active_file_index, uint64_t *sensor_write_intervals_us);
 
 #endif // LIBTM_H
